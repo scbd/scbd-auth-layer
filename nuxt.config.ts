@@ -6,6 +6,7 @@ export default defineNuxtConfig({
   runtimeConfig: {
     public: {
       authApiUrl: '',
+      authInactivityTimeoutMinutes: 30,
     }
   },  
   extends: [
