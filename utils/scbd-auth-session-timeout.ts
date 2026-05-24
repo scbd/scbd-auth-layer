@@ -6,6 +6,7 @@ type AuthSessionTimeoutOptions = {
   logout: (returnTo?: string) => void;
 };
 
+// Shared across tabs: updating it extends the session, removing it ends the session.
 const STORAGE_KEY_LAST_ACTIVITY = "auth:lastActivityAt";
 const DEFAULT_TIMEOUT_MINUTES = 30;
 const ACTIVITY_THROTTLE_MS = 30 * 1000;
@@ -15,13 +16,16 @@ export function installScbdAuthSessionTimeout(
   nuxtApp: NuxtApp,
   { isAuthenticated, logout }: AuthSessionTimeoutOptions,
 ) {
+  // Browser-only: this installer uses window, document, localStorage, and location.
   if (!import.meta.client) return;
 
   const timeoutMs = getConfiguredTimeoutMs();
   if (timeoutMs <= 0) return;
 
+  // Local throttle bookkeeping only; localStorage is the source of truth.
   let lastActivityWriteAt = Number(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY)) || 0;
   let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  // Prevent timeout-triggered logout/navigation from recording fresh activity.
   let isTimingOut = false;
 
   const clearTimer = () => {
@@ -107,6 +111,7 @@ export function installScbdAuthSessionTimeout(
 
   const onStorage = (event: StorageEvent) => {
     if (event.key === STORAGE_KEY_LAST_ACTIVITY) {
+      // Another tab timed out and removed the shared activity marker.
       if (event.newValue === null) {
         timeout();
         return;
@@ -118,6 +123,7 @@ export function installScbdAuthSessionTimeout(
   };
 
   const onVisibilityChange = () => {
+    // Timers can drift or pause in background tabs, so re-check when the tab returns.
     if (document.visibilityState === "visible") checkTimeout();
   };
 
@@ -145,8 +151,10 @@ export function installScbdAuthSessionTimeout(
   window.addEventListener("focus", checkTimeout);
   window.addEventListener("storage", onStorage);
   document.addEventListener("visibilitychange", onVisibilityChange);
+  // Treat completed in-app navigation as activity, even without a direct DOM event.
   const removePageHook = nuxtApp.hook("page:finish", () => recordActivity(true));
 
+  // Dev-only HMR cleanup: avoid duplicate timers/listeners after Vite swaps this module.
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
       clearTimer();

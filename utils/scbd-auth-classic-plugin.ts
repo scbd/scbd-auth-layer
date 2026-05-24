@@ -45,6 +45,7 @@ export const scbdAuthClassicPlugin = async (nuxtApp: any) => {
   const plugin = await defineNuxtPlugin(nuxtApp);
   const { isAuthenticated, logout } = useScbdAuthClassic();
 
+  // Auth state is initialized above; now watch it for inactivity.
   installScbdAuthSessionTimeout(nuxtApp, { isAuthenticated, logout });
 
   return plugin;
