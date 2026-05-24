@@ -7,10 +7,9 @@ type AuthSessionTimeoutOptions = {
 };
 
 const STORAGE_KEY_LAST_ACTIVITY = "auth:lastActivityAt";
-const STORAGE_KEY_TIMED_OUT_AT = "auth:timedOutAt";
 const DEFAULT_TIMEOUT_MINUTES = 30;
 const ACTIVITY_THROTTLE_MS = 30 * 1000;
-const ACTIVITY_EVENTS = ["click", "keydown", "mousedown", "mousemove", "scroll", "touchstart"];
+const ACTIVITY_EVENTS = ["pointerdown", "keydown", "scroll"];
 
 export function installScbdAuthSessionTimeout(
   nuxtApp: NuxtApp,
@@ -21,7 +20,7 @@ export function installScbdAuthSessionTimeout(
   const timeoutMs = getConfiguredTimeoutMs();
   if (timeoutMs <= 0) return;
 
-  let lastRecordedActivityAt = Number(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY)) || 0;
+  let lastActivityWriteAt = Number(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY)) || 0;
   let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
   let isTimingOut = false;
 
@@ -37,9 +36,16 @@ export function installScbdAuthSessionTimeout(
 
     isTimingOut = true;
     clearTimer();
-    localStorage.setItem(STORAGE_KEY_TIMED_OUT_AT, String(Date.now()));
     localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
     logout(location.href);
+  };
+
+  const startActivityWindow = () => {
+    const now = Date.now();
+
+    lastActivityWriteAt = now;
+    localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
+    scheduleTimeout();
   };
 
   const scheduleTimeout = () => {
@@ -50,7 +56,7 @@ export function installScbdAuthSessionTimeout(
     const lastActivityAt = getLastActivityAt();
 
     if (!lastActivityAt) {
-      recordActivity(true);
+      startActivityWindow();
       return;
     }
 
@@ -69,11 +75,11 @@ export function installScbdAuthSessionTimeout(
 
     const now = Date.now();
 
-    if (!force && now - lastRecordedActivityAt < ACTIVITY_THROTTLE_MS) {
+    if (!force && now - lastActivityWriteAt < ACTIVITY_THROTTLE_MS) {
       return;
     }
 
-    lastRecordedActivityAt = now;
+    lastActivityWriteAt = now;
     localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
     scheduleTimeout();
   };
@@ -87,7 +93,7 @@ export function installScbdAuthSessionTimeout(
     const lastActivityAt = getLastActivityAt();
 
     if (!lastActivityAt) {
-      recordActivity(true);
+      startActivityWindow();
       return;
     }
 
@@ -100,13 +106,13 @@ export function installScbdAuthSessionTimeout(
   };
 
   const onStorage = (event: StorageEvent) => {
-    if (event.key === STORAGE_KEY_TIMED_OUT_AT && event.newValue) {
-      timeout();
-      return;
-    }
-
     if (event.key === STORAGE_KEY_LAST_ACTIVITY) {
-      lastRecordedActivityAt = Number(event.newValue) || 0;
+      if (event.newValue === null) {
+        timeout();
+        return;
+      }
+
+      lastActivityWriteAt = Number(event.newValue) || 0;
       scheduleTimeout();
     }
   };
@@ -117,9 +123,15 @@ export function installScbdAuthSessionTimeout(
 
   const onActivity = () => recordActivity();
 
-  const stopAuthWatch = watch(isAuthenticated, (authenticated) => {
+  const stopAuthWatch = watch(isAuthenticated, (authenticated, wasAuthenticated) => {
     if (authenticated) {
       isTimingOut = false;
+
+      if (wasAuthenticated === false) {
+        startActivityWindow();
+        return;
+      }
+
       checkTimeout();
     } else {
       clearTimer();
