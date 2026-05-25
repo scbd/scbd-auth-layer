@@ -38,7 +38,7 @@ export function installScbdAuthSessionTimeout(
     if (isTimingOut || !toValue(isAuthenticated)) return;
 
     isTimingOut = true;
-    setStoredLastActivityAt();
+    clearStoredLastActivityAt();
     logout(location.href);
   };
 
@@ -173,13 +173,12 @@ function getStoredLastActivityAt() {
   return parseStoredActivityAt(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY));
 }
 
-function setStoredLastActivityAt(timestamp?: number) {
-  if (timestamp === undefined) {
-    localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
-    return;
-  }
-
+function setStoredLastActivityAt(timestamp: number) {
   localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(timestamp));
+}
+
+function clearStoredLastActivityAt() {
+  localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
 }
 
 function parseStoredActivityAt(value: string | null) {
