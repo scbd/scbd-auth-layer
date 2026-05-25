@@ -9,6 +9,7 @@ type AuthSessionTimeoutOptions = {
 // Shared across tabs: updating it extends the session, removing it ends the session.
 const STORAGE_KEY_LAST_ACTIVITY = "auth:lastActivityAt";
 const DEFAULT_TIMEOUT_MINUTES = 30;
+const TIMEOUT_CHECK_INTERVAL_MS = 5 * 1000;
 const ACTIVITY_THROTTLE_MS = 30 * 1000;
 const ACTIVITY_EVENTS = ["pointerdown", "keydown", "scroll"];
 
@@ -23,24 +24,15 @@ export function installScbdAuthSessionTimeout(
   if (timeoutMs <= 0) return;
 
   // Local throttle bookkeeping only; localStorage is the source of truth.
-  let lastActivityWriteAt = Number(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY)) || 0;
-  let timeoutTimer: ReturnType<typeof setTimeout> | null = null;
+  let lastActivityWriteAt = getStoredLastActivityAt();
   // Prevent timeout-triggered logout/navigation from recording fresh activity.
   let isTimingOut = false;
-
-  const clearTimer = () => {
-    if (timeoutTimer) clearTimeout(timeoutTimer);
-    timeoutTimer = null;
-  };
-
-  const getLastActivityAt = () => Number(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY)) || 0;
 
   const timeout = () => {
     if (isTimingOut || !toValue(isAuthenticated)) return;
 
     isTimingOut = true;
-    clearTimer();
-    localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
+    setStoredLastActivityAt();
     logout(location.href);
   };
 
@@ -48,30 +40,7 @@ export function installScbdAuthSessionTimeout(
     const now = Date.now();
 
     lastActivityWriteAt = now;
-    localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
-    scheduleTimeout();
-  };
-
-  const scheduleTimeout = () => {
-    clearTimer();
-
-    if (isTimingOut || !toValue(isAuthenticated)) return;
-
-    const lastActivityAt = getLastActivityAt();
-
-    if (!lastActivityAt) {
-      startActivityWindow();
-      return;
-    }
-
-    const remainingMs = timeoutMs - (Date.now() - lastActivityAt);
-
-    if (remainingMs <= 0) {
-      timeout();
-      return;
-    }
-
-    timeoutTimer = setTimeout(timeout, remainingMs);
+    setStoredLastActivityAt(now);
   };
 
   const recordActivity = (force = false) => {
@@ -84,17 +53,15 @@ export function installScbdAuthSessionTimeout(
     }
 
     lastActivityWriteAt = now;
-    localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(now));
-    scheduleTimeout();
+    setStoredLastActivityAt(now);
   };
 
   const checkTimeout = () => {
     if (!toValue(isAuthenticated)) {
-      clearTimer();
       return;
     }
 
-    const lastActivityAt = getLastActivityAt();
+    const lastActivityAt = getStoredLastActivityAt();
 
     if (!lastActivityAt) {
       startActivityWindow();
@@ -103,10 +70,7 @@ export function installScbdAuthSessionTimeout(
 
     if (Date.now() - lastActivityAt >= timeoutMs) {
       timeout();
-      return;
     }
-
-    scheduleTimeout();
   };
 
   const onStorage = (event: StorageEvent) => {
@@ -117,8 +81,8 @@ export function installScbdAuthSessionTimeout(
         return;
       }
 
-      lastActivityWriteAt = Number(event.newValue) || 0;
-      scheduleTimeout();
+      lastActivityWriteAt = parseStoredActivityAt(event.newValue);
+      checkTimeout();
     }
   };
 
@@ -139,10 +103,10 @@ export function installScbdAuthSessionTimeout(
       }
 
       checkTimeout();
-    } else {
-      clearTimer();
     }
   }, { immediate: true });
+
+  const timeoutInterval = setInterval(checkTimeout, TIMEOUT_CHECK_INTERVAL_MS);
 
   for (const eventName of ACTIVITY_EVENTS) {
     window.addEventListener(eventName, onActivity, { passive: true });
@@ -157,7 +121,7 @@ export function installScbdAuthSessionTimeout(
   // Dev-only HMR cleanup: avoid duplicate timers/listeners after Vite swaps this module.
   if (import.meta.hot) {
     import.meta.hot.dispose(() => {
-      clearTimer();
+      clearInterval(timeoutInterval);
       stopAuthWatch();
       removePageHook();
 
@@ -185,4 +149,21 @@ function getConfiguredTimeoutMs() {
   }
 
   return timeoutMinutes * 60 * 1000;
+}
+
+function getStoredLastActivityAt() {
+  return parseStoredActivityAt(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY));
+}
+
+function setStoredLastActivityAt(timestamp?: number) {
+  if (timestamp === undefined) {
+    localStorage.removeItem(STORAGE_KEY_LAST_ACTIVITY);
+    return;
+  }
+
+  localStorage.setItem(STORAGE_KEY_LAST_ACTIVITY, String(timestamp));
+}
+
+function parseStoredActivityAt(value: string | null) {
+  return Number(value) || 0;
 }
