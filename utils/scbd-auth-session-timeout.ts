@@ -23,10 +23,16 @@ export function installScbdAuthSessionTimeout(
   const timeoutMs = getConfiguredTimeoutMs();
   if (timeoutMs <= 0) return;
 
+
+  // === State ===
+
   // Local throttle bookkeeping only; localStorage is the source of truth.
   let lastActivityWriteAt = getStoredLastActivityAt();
   // Prevent timeout-triggered logout/navigation from recording fresh activity.
   let isTimingOut = false;
+
+
+  // === Session activity ===
 
   const timeout = () => {
     if (isTimingOut || !toValue(isAuthenticated)) return;
@@ -73,6 +79,9 @@ export function installScbdAuthSessionTimeout(
     }
   };
 
+
+  // === Browser events ===
+
   const onStorage = (event: StorageEvent) => {
     if (event.key === STORAGE_KEY_LAST_ACTIVITY) {
       // Another tab timed out and removed the shared activity marker.
@@ -92,6 +101,9 @@ export function installScbdAuthSessionTimeout(
   };
 
   const onActivity = () => recordActivity();
+
+
+  // === Wiring ===
 
   const stopAuthWatch = watch(isAuthenticated, (authenticated, wasAuthenticated) => {
     if (authenticated) {
@@ -136,6 +148,9 @@ export function installScbdAuthSessionTimeout(
   }
 }
 
+
+// === Configuration ===
+
 function getConfiguredTimeoutMs() {
   const publicConfig = useRuntimeConfig().public as Record<string, unknown>;
   const configuredMinutes = publicConfig.authInactivityTimeoutMinutes;
@@ -150,6 +165,9 @@ function getConfiguredTimeoutMs() {
 
   return timeoutMinutes * 60 * 1000;
 }
+
+
+// === Activity storage ===
 
 function getStoredLastActivityAt() {
   return parseStoredActivityAt(localStorage.getItem(STORAGE_KEY_LAST_ACTIVITY));
