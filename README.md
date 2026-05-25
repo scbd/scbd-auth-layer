@@ -37,6 +37,8 @@ Make sure Auth API URL is available to the environment
 NUXT_PUBLIC_AUTH_API_URL=...
 ```
 
+By default, authenticated sessions time out after 30 minutes of inactivity. Browser activity and route changes reset the timer, and activity is shared across tabs. Set `NUXT_PUBLIC_AUTH_INACTIVITY_TIMEOUT_MINUTES=0` to disable it, or set another number of minutes to change the timeout.
+
 Add plugin to initialize
 
 ```ts

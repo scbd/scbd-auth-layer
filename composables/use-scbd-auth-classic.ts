@@ -27,11 +27,18 @@ export function useScbdAuthClassic(): IScbdAuth & { signIn(email: string, passwo
     return navigateTo({ path: '/login', query: { returnUrl } })
   }
 
-  function logout(_returnTo: Ref<string> | string | null = null) {
+  function logout(returnTo: Ref<string> | string | null = null) {
     localStorage.removeItem(STORAGE_KEY_TOKEN)
     localStorage.removeItem(STORAGE_KEY_EXPIRATION)
     token.value = null
     user.value = null
+
+    const returnUrl = toValue(returnTo)
+
+    if (returnUrl) {
+      return navigateTo({ path: '/login', query: { returnUrl } })
+    }
+
     return navigateTo('/login')
   }
 

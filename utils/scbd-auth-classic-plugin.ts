@@ -1,6 +1,7 @@
 import { AnonymousUser } from '~/data/AnonymousUser';
 import type { AuthUser } from '../types/scbd-auth-user'
 import { getUser } from './scbd-auth-scheme'
+import { installScbdAuthSessionTimeout } from './scbd-auth-session-timeout'
 
 const STORAGE_KEY_TOKEN = 'classic:token'
 const STORAGE_KEY_EXPIRATION = 'classic:tokenExpiration'
@@ -41,5 +42,11 @@ const defineNuxtPlugin = async (nuxtApp: any) => {
 
 export const scbdAuthClassicPlugin = async (nuxtApp: any) => {
   addRouteMiddleware("auth", scbdAuthMiddleware(useScbdAuthClassic), { global: true });
-  return defineNuxtPlugin(nuxtApp);
+  const plugin = await defineNuxtPlugin(nuxtApp);
+  const { isAuthenticated, logout } = useScbdAuthClassic();
+
+  // Auth state is initialized above; now watch it for inactivity.
+  installScbdAuthSessionTimeout(nuxtApp, { isAuthenticated, logout });
+
+  return plugin;
 };
